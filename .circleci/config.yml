@@ -1,52 +1,34 @@
-# Python CircleCI 2.0 configuration file
-#
-# Check https://circleci.com/docs/2.0/language-python/ for more details
-#
-version: 2
+version: 2.1
 jobs:
-  build:
+  build_and_deploy:     
     docker:
-      # specify the version you desire here
-      # use `-browsers` prefix for selenium tests, e.g. `3.6.1-browsers`
-      - image: circleci/python:3.6.1
-      
-      # Specify service dependencies here if necessary
-      # CircleCI maintains a library of pre-built images
-      # documented at https://circleci.com/docs/2.0/circleci-images/
-      # - image: circleci/postgres:9.4
-
-    working_directory: ~/repo
-
+        - image: google/cloud-sdk:slim
     steps:
       - checkout
-
-      # Download and cache dependencies
-      - restore_cache:
-          keys:
-          - v1-dependencies-{{ checksum "requirements.txt" }}
-          # fallback to using the latest cache if no exact match is found
-          - v1-dependencies-
-
       - run:
-          name: install dependencies
+          name: Install Sphinx
           command: |
-            python3 -m venv venv
-            . venv/bin/activate
-            pip install -r requirements.txt
-      - save_cache:
-          paths:
-            - ./venv
-          key: v1-dependencies-{{ checksum "requirements.txt" }}
-        
-      # run tests!
+            apt install -y python-pip && \
+            python3 -m pip install -r requirements.txt
       - run:
-          name: run tests
+          name: Make Docs
           command: |
-            . venv/bin/activate
-            make test
-      # run lints!
-      - run:
-          name: run lint
+            cd docs && make html
+      - run: 
+          name: Deploy Docs
           command: |
-            . venv/bin/activate
-            make lint
+            echo ${GCLOUD_SERVICE_KEY} > /tmp/sa_key.json
+            gcloud auth activate-service-account --key-file=/tmp/sa_key.json
+            rm /tmp/sa_key.json
+            gcloud --quiet config set project ${GOOGLE_PROJECT_ID}
+            gcloud --quiet config set compute/zone ${GOOGLE_COMPUTE_ZONE}
+            gcloud --quiet app deploy
+workflows:
+  version: 2
+  build_and_deploy:
+    jobs:
+      - build_and_deploy:
+        filters:
+          branches:
+            only:
+              - master
